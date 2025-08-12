@@ -40,11 +40,21 @@ export default function DashboardPage() {
   const properties = getUserProperties()
   const recentProperties = properties.slice(0, 2)
 
+  // Check if user is new (account created within the last minute)
+  const isNewUser = (() => {
+    if (!user || !user.dateJoined) return false;
+    const joined = new Date(user.dateJoined);
+    const now = new Date();
+    return (now.getTime() - joined.getTime()) < 60 * 1000;
+  })();
+
   return (
     <DashboardLayout>
       <div className="space-y-6 md:space-y-8">
         <div>
-          <h1 className="text-2xl md:text-3xl font-bold tracking-tight">Welcome back, {user.name}</h1>
+          <h1 className="text-2xl md:text-3xl font-bold tracking-tight">
+            {isNewUser ? 'Welcome to ArdhiX!' : `Welcome back, ${user.name}!`}
+          </h1>
           <p className="text-muted-foreground">
             Here's an overview of your land registry activities and properties.
           </p>
