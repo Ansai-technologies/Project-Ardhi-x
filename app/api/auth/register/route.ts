@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { SupabaseAuthService } from '@/lib/supabase-auth'
+import { rateLimiter } from '@/lib/rate-limiter'
+import { logger } from '@/lib/logger'
 
 export async function POST(request: NextRequest) {
   try {
@@ -20,10 +22,52 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    if (password.length < 6) {
+    // Validate password strength
+    if (password.length < 8) {
       return NextResponse.json(
-        { success: false, error: 'Password must be at least 6 characters long' },
+        { success: false, error: 'Password must be at least 8 characters long' },
         { status: 400 }
+      )
+    }
+    
+    if (!/[a-z]/.test(password)) {
+      return NextResponse.json(
+        { success: false, error: 'Password must contain at least one lowercase letter' },
+        { status: 400 }
+      )
+    }
+    
+    if (!/[A-Z]/.test(password)) {
+      return NextResponse.json(
+        { success: false, error: 'Password must contain at least one uppercase letter' },
+        { status: 400 }
+      )
+    }
+    
+    if (!/[0-9]/.test(password)) {
+      return NextResponse.json(
+        { success: false, error: 'Password must contain at least one number' },
+        { status: 400 }
+      )
+    }
+    
+    if (!/[^a-zA-Z0-9]/.test(password)) {
+      return NextResponse.json(
+        { success: false, error: 'Password must contain at least one special character' },
+        { status: 400 }
+      )
+    }
+
+    // Check rate limit for registration (prevent spam)
+    const clientIp = request.headers.get('x-forwarded-for') || 'unknown'
+    const rateLimit = rateLimiter.checkLimit(`register:${clientIp}`, 3) // Max 3 registrations per IP per time window
+    
+    if (!rateLimit.allowed) {
+      logger.warn('Registration attempt blocked by rate limiter', { ip: clientIp })
+      
+      return NextResponse.json(
+        { success: false, error: 'Too many registration attempts. Please try again later.' },
+        { status: 429 }
       )
     }
 
@@ -52,6 +96,8 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    logger.info('New user registered', { userId: user.id, email })
+
     // Convert profile to user format for compatibility
     const userData = SupabaseAuthService.profileToUser(profile)
 
@@ -71,7 +117,7 @@ export async function POST(request: NextRequest) {
 
     return response
   } catch (error: any) {
-    console.error('Registration error:', error)
+    logger.error('Registration error', error)
     
     // Handle specific Supabase errors
     if (error.message?.includes('already registered')) {

@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { SupabaseAuthService } from '@/lib/supabase-auth'
+import { rateLimiter } from '@/lib/rate-limiter'
+import { logger } from '@/lib/logger'
 
 export async function POST(request: NextRequest) {
   try {
@@ -13,15 +15,44 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // Check rate limit
+    const rateLimit = rateLimiter.checkLimit(email.toLowerCase())
+    if (!rateLimit.allowed) {
+      const lockMinutes = rateLimit.lockUntil 
+        ? Math.ceil((rateLimit.lockUntil - Date.now()) / 60000)
+        : 15
+      
+      logger.warn('Login attempt blocked by rate limiter', { email })
+      
+      return NextResponse.json(
+        { 
+          success: false, 
+          error: `Too many failed login attempts. Account locked for ${lockMinutes} minutes.` 
+        },
+        { status: 429 }
+      )
+    }
+
     // Sign in with Supabase
     const { user, session, profile } = await SupabaseAuthService.signIn(email, password)
 
     if (!user || !session || !profile) {
+      logger.warn('Failed login attempt', { email })
+      
       return NextResponse.json(
-        { success: false, error: 'Invalid email or password' },
+        { 
+          success: false, 
+          error: 'Invalid email or password',
+          remainingAttempts: rateLimit.remaining - 1
+        },
         { status: 401 }
       )
     }
+
+    // Reset rate limit on successful login
+    rateLimiter.reset(email.toLowerCase())
+    
+    logger.info('Successful login', { userId: user.id, email })
 
     // Convert profile to user format for compatibility
     const userData = SupabaseAuthService.profileToUser(profile)
@@ -43,7 +74,7 @@ export async function POST(request: NextRequest) {
 
     return response
   } catch (error) {
-    console.error('Login error:', error)
+    logger.error('Login error', error)
     return NextResponse.json(
       { success: false, error: 'Invalid email or password' },
       { status: 401 }
