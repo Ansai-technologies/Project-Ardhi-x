@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { SupabaseAuthService } from '@/lib/supabase-auth'
+import { logger } from '@/lib/logger'
 
 export async function GET(request: NextRequest) {
   try {
@@ -30,7 +31,7 @@ export async function GET(request: NextRequest) {
       user: userData,
     })
   } catch (error) {
-    console.error('Me endpoint error:', error)
+    logger.error('Me endpoint error', error)
     return NextResponse.json(
       { success: false, error: 'Internal server error' },
       { status: 500 }

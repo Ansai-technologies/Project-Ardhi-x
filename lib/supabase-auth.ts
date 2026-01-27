@@ -1,5 +1,6 @@
 import { supabase, supabaseAdmin } from './supabase'
 import { User } from '@/types/auth'
+import { logger } from './logger'
 
 export interface UserProfile {
   id: string
@@ -61,14 +62,14 @@ export class SupabaseAuthService {
           })
 
         if (profileError) {
-          console.error('Profile creation error:', profileError)
+          logger.error('Profile creation error', profileError)
           throw profileError
         }
       }
 
       return { user: data.user, session: data.session }
     } catch (error) {
-      console.error('Sign up error:', error)
+      logger.error('Sign up error', error)
       throw error
     }
   }
@@ -91,7 +92,7 @@ export class SupabaseAuthService {
 
       return { user: data.user, session: data.session, profile: null }
     } catch (error) {
-      console.error('Sign in error:', error)
+      logger.error('Sign in error', error)
       throw error
     }
   }
@@ -102,7 +103,7 @@ export class SupabaseAuthService {
       const { error } = await supabase.auth.signOut()
       if (error) throw error
     } catch (error) {
-      console.error('Sign out error:', error)
+      logger.error('Sign out error', error)
       throw error
     }
   }
@@ -120,7 +121,7 @@ export class SupabaseAuthService {
 
       return { user: null, profile: null }
     } catch (error) {
-      console.error('Get current user error:', error)
+      logger.error('Get current user error', error)
       return { user: null, profile: null }
     }
   }
@@ -135,13 +136,13 @@ export class SupabaseAuthService {
         .single()
 
       if (error) {
-        console.error('Get user profile error:', error)
+        logger.error('Get user profile error', error)
         return null
       }
 
       return data
     } catch (error) {
-      console.error('Get user profile error:', error)
+      logger.error('Get user profile error', error)
       return null
     }
   }
@@ -162,7 +163,7 @@ export class SupabaseAuthService {
       if (error) throw error
       return data
     } catch (error) {
-      console.error('Update user profile error:', error)
+      logger.error('Update user profile error', error)
       throw error
     }
   }
@@ -176,7 +177,7 @@ export class SupabaseAuthService {
 
       if (error) throw error
     } catch (error) {
-      console.error('Reset password error:', error)
+      logger.error('Reset password error', error)
       throw error
     }
   }
@@ -190,7 +191,7 @@ export class SupabaseAuthService {
 
       if (error) throw error
     } catch (error) {
-      console.error('Update password error:', error)
+      logger.error('Update password error', error)
       throw error
     }
   }
@@ -208,7 +209,7 @@ export class SupabaseAuthService {
 
       return { user: null, profile: null }
     } catch (error) {
-      console.error('Verify session error:', error)
+      logger.error('Verify session error', error)
       return { user: null, profile: null }
     }
   }
@@ -219,7 +220,7 @@ export class SupabaseAuthService {
       id: profile.id,
       email: profile.email,
       name: profile.name,
-      role: profile.role,
+      role: profile.role as 'user' | 'admin',
       avatar: profile.avatar,
       phone: profile.phone,
       nationalId: profile.national_id,

@@ -1,149 +1,202 @@
 import { User } from '@/types/auth'
+import { supabaseAdmin } from './supabase'
+import { logger } from './logger'
 
 class AdminUserService {
-  private static users: User[] = [
-    {
-      id: 'admin_001',
-      name: 'John Doe',
-      email: 'john.doe@example.com',
-      role: 'user',
-      phone: '+254700000000',
-      nationalId: '12345678',
-      dateJoined: '2023-01-15',
-      isVerified: true,
-      avatar: '/placeholder-user.jpg',
-      location: 'Nairobi, Kenya'
-    },
-    {
-      id: 'admin_002',
-      name: 'Jane Smith',
-      email: 'jane.smith@example.com',
-      role: 'admin',
-      phone: '+254700000001',
-      nationalId: '87654321',
-      dateJoined: '2022-11-20',
-      isVerified: true,
-      avatar: '/placeholder-user.jpg',
-      location: 'Mombasa, Kenya'
-    },
-    {
-      id: 'user_003',
-      name: 'David Wilson',
-      email: 'david.wilson@example.com',
-      role: 'user',
-      phone: '+254700000002',
-      nationalId: '11223344',
-      dateJoined: '2023-03-10',
-      isVerified: false,
-      location: 'Kisumu, Kenya'
-    },
-    {
-      id: 'user_004',
-      name: 'Sarah Johnson',
-      email: 'sarah.johnson@example.com',
-      role: 'user',
-      phone: '+254700000003',
-      nationalId: '55667788',
-      dateJoined: '2023-05-22',
-      isVerified: true,
-      location: 'Nakuru, Kenya'
-    },
-    {
-      id: 'user_005',
-      name: 'Michael Brown',
-      email: 'michael.brown@example.com',
-      role: 'user',
-      phone: '+254700000004',
-      nationalId: '99887766',
-      dateJoined: '2023-07-15',
-      isVerified: false,
-      location: 'Eldoret, Kenya'
+  static async getAllUsers(): Promise<User[]> {
+    try {
+      const { data, error } = await supabaseAdmin
+        .from('profiles')
+        .select('*')
+        .order('date_joined', { ascending: false })
+
+      if (error) {
+        logger.error('Error fetching all users', error)
+        throw error
+      }
+
+      return this.mapProfilesToUsers(data || [])
+    } catch (error) {
+      logger.error('Error in getAllUsers', error)
+      return []
     }
-  ]
-
-  static getAllUsers(): User[] {
-    return this.users.sort((a, b) => new Date(b.dateJoined).getTime() - new Date(a.dateJoined).getTime())
   }
 
-  static getUserById(id: string): User | null {
-    return this.users.find(user => user.id === id) || null
+  static async getUserById(id: string): Promise<User | null> {
+    try {
+      const { data, error } = await supabaseAdmin
+        .from('profiles')
+        .select('*')
+        .eq('id', id)
+        .single()
+
+      if (error) {
+        logger.error('Error fetching user by ID', { id, error })
+        return null
+      }
+
+      return this.mapProfileToUser(data)
+    } catch (error) {
+      logger.error('Error in getUserById', { id, error })
+      return null
+    }
   }
 
-  static searchUsers(query: string): User[] {
-    const lowerQuery = query.toLowerCase()
-    return this.users.filter(user => 
-      user.name.toLowerCase().includes(lowerQuery) ||
-      user.email.toLowerCase().includes(lowerQuery) ||
-      user.nationalId?.includes(query) ||
-      user.phone?.includes(query)
-    )
+  static async searchUsers(query: string): Promise<User[]> {
+    try {
+      const lowerQuery = query.toLowerCase()
+      
+      const { data, error } = await supabaseAdmin
+        .from('profiles')
+        .select('*')
+        .or(`name.ilike.%${lowerQuery}%,email.ilike.%${lowerQuery}%,national_id.ilike.%${lowerQuery}%,phone.ilike.%${lowerQuery}%`)
+        .order('date_joined', { ascending: false })
+
+      if (error) {
+        logger.error('Error searching users', { query, error })
+        throw error
+      }
+
+      return this.mapProfilesToUsers(data || [])
+    } catch (error) {
+      logger.error('Error in searchUsers', { query, error })
+      return []
+    }
   }
 
-  static updateUserRole(userId: string, newRole: 'user' | 'admin'): boolean {
-    const userIndex = this.users.findIndex(user => user.id === userId)
-    if (userIndex !== -1) {
-      this.users[userIndex].role = newRole
+  static async updateUserRole(userId: string, newRole: 'user' | 'admin'): Promise<boolean> {
+    try {
+      const { error } = await supabaseAdmin
+        .from('profiles')
+        .update({ role: newRole })
+        .eq('id', userId)
+
+      if (error) {
+        logger.error('Error updating user role', { userId, newRole, error })
+        throw error
+      }
+
+      logger.info('User role updated', { userId, newRole })
       return true
+    } catch (error) {
+      logger.error('Error in updateUserRole', { userId, newRole, error })
+      return false
     }
-    return false
   }
 
-  static updateUserVerification(userId: string, isVerified: boolean): boolean {
-    const userIndex = this.users.findIndex(user => user.id === userId)
-    if (userIndex !== -1) {
-      this.users[userIndex].isVerified = isVerified
+  static async updateUserVerification(userId: string, isVerified: boolean): Promise<boolean> {
+    try {
+      const { error } = await supabaseAdmin
+        .from('profiles')
+        .update({ is_verified: isVerified })
+        .eq('id', userId)
+
+      if (error) {
+        logger.error('Error updating user verification', { userId, isVerified, error })
+        throw error
+      }
+
+      logger.info('User verification updated', { userId, isVerified })
       return true
+    } catch (error) {
+      logger.error('Error in updateUserVerification', { userId, isVerified, error })
+      return false
     }
-    return false
   }
 
-  static getUserStats() {
-    const total = this.users.length
-    const admins = this.users.filter(user => user.role === 'admin').length
-    const verified = this.users.filter(user => user.isVerified).length
-    const unverified = total - verified
+  static async getUserStats() {
+    try {
+      const users = await this.getAllUsers()
+      const total = users.length
+      const admins = users.filter(user => user.role === 'admin').length
+      const verified = users.filter(user => user.isVerified).length
+      const unverified = total - verified
 
-    return {
-      total,
-      admins,
-      users: total - admins,
-      verified,
-      unverified,
-      recentJoins: this.users.filter(user => {
+      const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
+      const recentJoins = users.filter(user => {
         const joinDate = new Date(user.dateJoined)
-        const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
         return joinDate > thirtyDaysAgo
       }).length
+
+      return {
+        total,
+        admins,
+        users: total - admins,
+        verified,
+        unverified,
+        recentJoins
+      }
+    } catch (error) {
+      logger.error('Error in getUserStats', error)
+      return {
+        total: 0,
+        admins: 0,
+        users: 0,
+        verified: 0,
+        unverified: 0,
+        recentJoins: 0
+      }
     }
   }
 
-  static filterUsers(filters: {
+  static async filterUsers(filters: {
     role?: 'user' | 'admin' | 'all'
     verified?: boolean | 'all'
     joinedAfter?: string
     joinedBefore?: string
-  }) {
-    let filtered = [...this.users]
+  }): Promise<User[]> {
+    try {
+      let query = supabaseAdmin.from('profiles').select('*')
 
-    if (filters.role && filters.role !== 'all') {
-      filtered = filtered.filter(user => user.role === filters.role)
+      if (filters.role && filters.role !== 'all') {
+        query = query.eq('role', filters.role)
+      }
+
+      if (filters.verified !== 'all' && typeof filters.verified === 'boolean') {
+        query = query.eq('is_verified', filters.verified)
+      }
+
+      if (filters.joinedAfter) {
+        query = query.gte('date_joined', filters.joinedAfter)
+      }
+
+      if (filters.joinedBefore) {
+        query = query.lte('date_joined', filters.joinedBefore)
+      }
+
+      const { data, error } = await query.order('date_joined', { ascending: false })
+
+      if (error) {
+        logger.error('Error filtering users', { filters, error })
+        throw error
+      }
+
+      return this.mapProfilesToUsers(data || [])
+    } catch (error) {
+      logger.error('Error in filterUsers', { filters, error })
+      return []
     }
+  }
 
-    if (filters.verified !== 'all' && typeof filters.verified === 'boolean') {
-      filtered = filtered.filter(user => user.isVerified === filters.verified)
+  // Helper methods to map database profiles to User type
+  private static mapProfileToUser(profile: any): User {
+    return {
+      id: profile.id,
+      name: profile.name,
+      email: profile.email,
+      role: profile.role,
+      avatar: profile.avatar,
+      phone: profile.phone,
+      nationalId: profile.national_id,
+      bio: profile.bio,
+      location: profile.location,
+      dateJoined: profile.date_joined,
+      isVerified: profile.is_verified,
     }
+  }
 
-    if (filters.joinedAfter) {
-      const afterDate = new Date(filters.joinedAfter)
-      filtered = filtered.filter(user => new Date(user.dateJoined) >= afterDate)
-    }
-
-    if (filters.joinedBefore) {
-      const beforeDate = new Date(filters.joinedBefore)
-      filtered = filtered.filter(user => new Date(user.dateJoined) <= beforeDate)
-    }
-
-    return filtered.sort((a, b) => new Date(b.dateJoined).getTime() - new Date(a.dateJoined).getTime())
+  private static mapProfilesToUsers(profiles: any[]): User[] {
+    return profiles.map(profile => this.mapProfileToUser(profile))
   }
 }
 
