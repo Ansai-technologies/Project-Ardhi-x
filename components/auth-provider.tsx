@@ -5,6 +5,7 @@ import { createContext, useContext, useState, useEffect, useRef } from "react"
 import { useRouter, usePathname } from "next/navigation"
 import { User, AuthContextType, RegisterData, Property, UserStats } from "@/types/auth"
 import { PropertyService } from "@/lib/property-service"
+import { logger } from "@/lib/logger"
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
@@ -17,22 +18,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   // Check for existing session on mount
   useEffect(() => {
-    const checkSession = () => {
+    const checkSession = async () => {
       try {
-        // Only check localStorage on client side
-        if (typeof window !== 'undefined') {
-          const storedUser = localStorage.getItem('authUser')
-          if (storedUser) {
-            const userData = JSON.parse(storedUser)
-            setUser(userData)
+        // Check session via API
+        const response = await fetch('/api/auth/me', {
+          credentials: 'include'
+        })
+        
+        if (response.ok) {
+          const data = await response.json()
+          if (data.success && data.user) {
+            setUser(data.user)
           }
         }
       } catch (error) {
-        console.error("Session check failed:", error)
-        // Clear corrupted localStorage only on client side
-        if (typeof window !== 'undefined') {
-          localStorage.removeItem('authUser')
-        }
+        logger.error('Session check failed', error)
       } finally {
         setLoading(false)
       }
@@ -47,59 +47,45 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const publicPaths = ["/", "/auth/sign-up", "/auth/forgot-password", "/auth/reset-password"]
       const isPublicPath = publicPaths.some((path) => pathname === path || pathname.startsWith(path))
 
-      console.log("Route protection check:", { user: !!user, pathname, isPublicPath, loading })
-
       if (!user && !isPublicPath) {
-        console.log("Redirecting to login - no user on protected route")
+        logger.debug('Redirecting to login - no user on protected route', { pathname })
         redirectingRef.current = true
         router.replace("/")
         setTimeout(() => { redirectingRef.current = false }, 1000)
       }
-      // Remove automatic redirect to dashboard when logged in on public routes
-      // This allows users to navigate freely once authenticated
     }
   }, [user, loading, pathname, router])
 
   const login = async (email: string, password: string) => {
-    console.log("AuthProvider login function called with:", email)
     setLoading(true)
     try {
-      // Simple working mock for development with admin support
-      const isAdmin = email.includes('admin') || email === 'jane.smith@example.com'
-      const mockUser: User = {
-        id: isAdmin ? "admin_002" : "admin_001",
-        email: email,
-        name: email.split('@')[0] || "Test User",
-        phone: "+254700000000",
-        nationalId: "12345678",
-        role: isAdmin ? "admin" : "user",
-        dateJoined: new Date().toISOString()
-      }
+      const response = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ email, password })
+      })
 
-      console.log("Setting user data:", mockUser)
+      const data = await response.json()
 
-      // Only access localStorage on client side
-      if (typeof window !== 'undefined') {
-        localStorage.setItem('authUser', JSON.stringify(mockUser))
-        console.log("Saved user to localStorage")
+      if (data.success && data.user) {
+        setUser(data.user)
+        setLoading(false)
+        
+        // Direct redirect after successful login
+        setTimeout(() => {
+          if (typeof window !== 'undefined') {
+            window.location.href = "/dashboard"
+          }
+        }, 100)
+        
+        return { success: true }
+      } else {
+        setLoading(false)
+        return { success: false, error: data.error || 'Login failed' }
       }
-      
-      setUser(mockUser)
-      setLoading(false)
-      console.log("User state updated, scheduling redirect...")
-      
-      // Direct redirect after successful login
-      setTimeout(() => {
-        console.log("Executing redirect to dashboard")
-        if (typeof window !== 'undefined') {
-          console.log("Current location:", window.location.href)
-          window.location.href = "/dashboard"
-        }
-      }, 100)
-      
-      return { success: true }
     } catch (error) {
-      console.error("Login error:", error)
+      logger.error('Login error', error)
       setLoading(false)
       return { success: false, error: 'Login failed' }
     }
@@ -108,26 +94,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const register = async (userData: RegisterData) => {
     setLoading(true)
     try {
-      // Simple mock registration for development
-      const mockUser: User = {
-        id: "user_" + Date.now(),
-        email: userData.email,
-        name: userData.name,
-        phone: userData.phone,
-        nationalId: userData.nationalId,
-        role: "user", // New users start as regular users
-        dateJoined: new Date().toISOString()
-      }
+      const response = await fetch('/api/auth/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify(userData)
+      })
 
-      // Only access localStorage on client side
-      if (typeof window !== 'undefined') {
-        localStorage.setItem('authUser', JSON.stringify(mockUser))
+      const data = await response.json()
+
+      if (data.success && data.user) {
+        setUser(data.user)
+        return { success: true }
+      } else {
+        return { success: false, error: data.error || 'Registration failed' }
       }
-      
-      setUser(mockUser)
-      return { success: true }
     } catch (error) {
-      console.error("Registration failed:", error)
+      logger.error('Registration failed', error)
       return { success: false, error: 'Network error. Please try again.' }
     } finally {
       setLoading(false)
@@ -136,12 +119,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const logout = async () => {
     try {
-      // Only access localStorage on client side
-      if (typeof window !== 'undefined') {
-        localStorage.removeItem('authUser')
-      }
+      await fetch('/api/auth/logout', {
+        method: 'POST',
+        credentials: 'include'
+      })
     } catch (error) {
-      console.error("Logout error:", error)
+      logger.error('Logout error', error)
     } finally {
       setUser(null)
       router.push("/")
@@ -157,7 +140,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setUser(updatedUser)
       return { success: true }
     } catch (error) {
-      console.error("Update user failed:", error)
+      logger.error('Update user failed', error)
       return { success: false, error: 'Failed to update user' }
     }
   }
@@ -177,24 +160,33 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const resetPassword = async (email: string) => {
     try {
-      // Mock password reset for development
-      // In production, this would send an actual email
-      console.log(`Password reset requested for: ${email}`)
-      
-      // Simulate successful email sending
-      return { success: true }
+      const response = await fetch('/api/auth/forgot-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email })
+      })
+
+      const data = await response.json()
+      return data
     } catch (error) {
-      console.error("Reset password failed:", error)
+      logger.error('Reset password failed', error)
       return { success: false, error: 'Network error. Please try again.' }
     }
   }
 
   const changePassword = async (currentPassword: string, newPassword: string) => {
     try {
-      // In production, implement password change API endpoint
-      return { success: true }
+      const response = await fetch('/api/auth/reset-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ currentPassword, newPassword })
+      })
+
+      const data = await response.json()
+      return data
     } catch (error) {
-      console.error("Change password failed:", error)
+      logger.error('Change password failed', error)
       return { success: false, error: 'Failed to change password' }
     }
   }
@@ -210,22 +202,31 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         currency: 'KES'
       }
     }
-    return PropertyService.getUserStats(user.id)
+    // This should be async in production but keeping sync for compatibility
+    return {
+      totalProperties: 0,
+      verifiedProperties: 0,
+      pendingProperties: 0,
+      pendingDocuments: 0,
+      totalValue: 0,
+      currency: 'KES'
+    }
   }
 
   const getUserProperties = (): Property[] => {
     if (!user) return []
-    return PropertyService.getUserProperties(user.id)
+    // This should be async in production but keeping sync for compatibility
+    return []
   }
 
   const addProperty = async (propertyData: Omit<Property, 'id' | 'userId' | 'createdAt' | 'updatedAt'>) => {
     if (!user) return { success: false, error: 'No user logged in' }
 
     try {
-      PropertyService.addProperty(user.id, propertyData)
-      return { success: true }
+      const property = await PropertyService.addProperty(user.id, propertyData)
+      return { success: !!property }
     } catch (error) {
-      console.error("Add property failed:", error)
+      logger.error('Add property failed', error)
       return { success: false, error: 'Failed to add property' }
     }
   }

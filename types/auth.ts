@@ -10,6 +10,7 @@ export interface User {
   location?: string
   dateJoined: string
   isVerified?: boolean
+  isFirstLogin?: boolean
 }
 
 export interface Property {

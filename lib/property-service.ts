@@ -1,181 +1,328 @@
 import { Property, PropertyDocument, UserStats } from '@/types/auth'
+import { supabaseAdmin } from './supabase'
+import { logger } from './logger'
 
-// In-memory storage for properties (replace with database in production)
-let properties: Property[] = [
-  // Sample properties for demo admin user
-  {
-    id: 'prop_001',
-    userId: 'admin_001',
-    title: 'Residential Plot - Westlands',
-    type: 'residential',
-    location: 'Westlands, Nairobi',
-    size: '2.5 Acres',
-    status: 'verified',
-    value: 25000000,
-    currency: 'KES',
-    documents: [
-      {
-        id: 'doc_001',
-        propertyId: 'prop_001',
-        name: 'Title Deed',
-        type: 'title_deed',
-        url: '/documents/title_deed_001.pdf',
-        status: 'approved',
-        uploadedAt: '2024-01-15T10:00:00Z'
-      }
-    ],
-    coordinates: {
-      lat: -1.2668,
-      lng: 36.8060
-    },
-    createdAt: '2024-01-15T10:00:00Z',
-    updatedAt: '2024-01-20T14:30:00Z'
-  },
-  {
-    id: 'prop_002',
-    userId: 'admin_001',
-    title: 'Commercial Land - Mombasa',
-    type: 'commercial',
-    location: 'Mombasa, Kenya',
-    size: '1.2 Acres',
-    status: 'pending',
-    value: 18000000,
-    currency: 'KES',
-    documents: [
-      {
-        id: 'doc_002',
-        propertyId: 'prop_002',
-        name: 'Survey Map',
-        type: 'survey_map',
-        url: '/documents/survey_map_002.pdf',
-        status: 'pending',
-        uploadedAt: '2024-07-10T15:20:00Z'
-      }
-    ],
-    coordinates: {
-      lat: -4.0435,
-      lng: 39.6682
-    },
-    createdAt: '2024-07-10T15:00:00Z',
-    updatedAt: '2024-07-10T15:20:00Z'
-  }
-]
-
-let documents: PropertyDocument[] = [
-  {
-    id: 'doc_003',
-    propertyId: 'prop_001',
-    name: 'Valuation Report',
-    type: 'valuation',
-    url: '/documents/valuation_001.pdf',
-    status: 'pending',
-    uploadedAt: '2024-07-11T09:15:00Z'
-  },
-  {
-    id: 'doc_004',
-    propertyId: 'prop_002',
-    name: 'Tax Receipt 2024',
-    type: 'tax_receipt',
-    url: '/documents/tax_receipt_002.pdf',
-    status: 'pending',
-    uploadedAt: '2024-07-11T11:30:00Z'
-  }
-]
-
+// Database-backed property service using Supabase
 export class PropertyService {
-  static getAllProperties(): Property[] {
-    return properties
+  static async getAllProperties(): Promise<Property[]> {
+    try {
+      const { data, error } = await supabaseAdmin
+        .from('properties')
+        .select(`
+          *,
+          property_documents (*)
+        `)
+        .order('created_at', { ascending: false })
+
+      if (error) {
+        logger.error('Error fetching all properties', error)
+        throw error
+      }
+
+      return this.mapPropertiesToDomain(data || [])
+    } catch (error) {
+      logger.error('Error in getAllProperties', error)
+      return []
+    }
   }
 
-  static getUserProperties(userId: string): Property[] {
-    return properties.filter(property => property.userId === userId)
+  static async getUserProperties(userId: string): Promise<Property[]> {
+    try {
+      const { data, error } = await supabaseAdmin
+        .from('properties')
+        .select(`
+          *,
+          property_documents (*)
+        `)
+        .eq('user_id', userId)
+        .order('created_at', { ascending: false })
+
+      if (error) {
+        logger.error('Error fetching user properties', { userId, error })
+        throw error
+      }
+
+      return this.mapPropertiesToDomain(data || [])
+    } catch (error) {
+      logger.error('Error in getUserProperties', { userId, error })
+      return []
+    }
   }
 
-  static getUserStats(userId: string): UserStats {
-    const userProperties = this.getUserProperties(userId)
-    const userDocuments = documents.filter(doc => 
-      userProperties.some(prop => prop.id === doc.propertyId)
-    )
-    
-    const verifiedProperties = userProperties.filter(prop => prop.status === 'verified').length
-    const pendingProperties = userProperties.filter(prop => prop.status === 'pending').length
-    const pendingDocuments = userDocuments.filter(doc => doc.status === 'pending').length
-    const totalValue = userProperties.reduce((sum, prop) => sum + prop.value, 0)
-    
+  static async getUserStats(userId: string): Promise<UserStats> {
+    try {
+      const properties = await this.getUserProperties(userId)
+      const documents = await this.getAllUserDocuments(userId)
+      
+      const verifiedProperties = properties.filter(prop => prop.status === 'verified').length
+      const pendingProperties = properties.filter(prop => prop.status === 'pending').length
+      const pendingDocuments = documents.filter(doc => doc.status === 'pending').length
+      const totalValue = properties.reduce((sum, prop) => sum + prop.value, 0)
+      
+      return {
+        totalProperties: properties.length,
+        verifiedProperties,
+        pendingProperties,
+        pendingDocuments,
+        totalValue,
+        currency: 'KES'
+      }
+    } catch (error) {
+      logger.error('Error in getUserStats', { userId, error })
+      return {
+        totalProperties: 0,
+        verifiedProperties: 0,
+        pendingProperties: 0,
+        pendingDocuments: 0,
+        totalValue: 0,
+        currency: 'KES'
+      }
+    }
+  }
+
+  static async addProperty(userId: string, propertyData: Omit<Property, 'id' | 'userId' | 'createdAt' | 'updatedAt'>): Promise<Property | null> {
+    try {
+      const { data, error } = await supabaseAdmin
+        .from('properties')
+        .insert({
+          user_id: userId,
+          title: propertyData.title,
+          type: propertyData.type,
+          location: propertyData.location,
+          county: propertyData.location, // Default county to location for now
+          size: propertyData.size,
+          status: propertyData.status || 'pending',
+          value: propertyData.value,
+          currency: propertyData.currency || 'KES',
+          coordinates_lat: propertyData.coordinates?.lat,
+          coordinates_lng: propertyData.coordinates?.lng,
+        })
+        .select()
+        .single()
+
+      if (error) {
+        logger.error('Error adding property', { userId, error })
+        throw error
+      }
+
+      logger.info('Property added successfully', { userId, propertyId: data.id })
+
+      // Map the database response to domain model
+      return this.mapPropertyToDomain(data, [])
+    } catch (error) {
+      logger.error('Error in addProperty', { userId, error })
+      return null
+    }
+  }
+
+  static async updateProperty(propertyId: string, updates: Partial<Property>): Promise<Property | null> {
+    try {
+      const updateData: any = {}
+      
+      if (updates.title) updateData.title = updates.title
+      if (updates.type) updateData.type = updates.type
+      if (updates.location) updateData.location = updates.location
+      if (updates.size) updateData.size = updates.size
+      if (updates.status) updateData.status = updates.status
+      if (updates.value !== undefined) updateData.value = updates.value
+      if (updates.currency) updateData.currency = updates.currency
+      if (updates.coordinates) {
+        updateData.coordinates_lat = updates.coordinates.lat
+        updateData.coordinates_lng = updates.coordinates.lng
+      }
+
+      const { data, error } = await supabaseAdmin
+        .from('properties')
+        .update(updateData)
+        .eq('id', propertyId)
+        .select(`
+          *,
+          property_documents (*)
+        `)
+        .single()
+
+      if (error) {
+        logger.error('Error updating property', { propertyId, error })
+        throw error
+      }
+
+      logger.info('Property updated successfully', { propertyId })
+
+      return this.mapPropertyToDomain(data, data.property_documents || [])
+    } catch (error) {
+      logger.error('Error in updateProperty', { propertyId, error })
+      return null
+    }
+  }
+
+  static async deleteProperty(propertyId: string): Promise<boolean> {
+    try {
+      const { error } = await supabaseAdmin
+        .from('properties')
+        .delete()
+        .eq('id', propertyId)
+
+      if (error) {
+        logger.error('Error deleting property', { propertyId, error })
+        throw error
+      }
+
+      logger.info('Property deleted successfully', { propertyId })
+      return true
+    } catch (error) {
+      logger.error('Error in deleteProperty', { propertyId, error })
+      return false
+    }
+  }
+
+  static async addDocument(document: Omit<PropertyDocument, 'id' | 'uploadedAt'>): Promise<PropertyDocument | null> {
+    try {
+      const { data, error } = await supabaseAdmin
+        .from('property_documents')
+        .insert({
+          property_id: document.propertyId,
+          name: document.name,
+          type: document.type,
+          url: document.url,
+          status: document.status || 'pending',
+        })
+        .select()
+        .single()
+
+      if (error) {
+        logger.error('Error adding document', error)
+        throw error
+      }
+
+      logger.info('Document added successfully', { documentId: data.id })
+
+      return {
+        id: data.id,
+        propertyId: data.property_id,
+        name: data.name,
+        type: data.type,
+        url: data.url,
+        status: data.status,
+        uploadedAt: data.uploaded_at,
+      }
+    } catch (error) {
+      logger.error('Error in addDocument', error)
+      return null
+    }
+  }
+
+  static async getPropertyDocuments(propertyId: string): Promise<PropertyDocument[]> {
+    try {
+      const { data, error } = await supabaseAdmin
+        .from('property_documents')
+        .select('*')
+        .eq('property_id', propertyId)
+        .order('uploaded_at', { ascending: false })
+
+      if (error) {
+        logger.error('Error fetching property documents', { propertyId, error })
+        throw error
+      }
+
+      return (data || []).map(doc => ({
+        id: doc.id,
+        propertyId: doc.property_id,
+        name: doc.name,
+        type: doc.type,
+        url: doc.url,
+        status: doc.status,
+        uploadedAt: doc.uploaded_at,
+      }))
+    } catch (error) {
+      logger.error('Error in getPropertyDocuments', { propertyId, error })
+      return []
+    }
+  }
+
+  static async getAllUserDocuments(userId: string): Promise<PropertyDocument[]> {
+    try {
+      const { data, error } = await supabaseAdmin
+        .from('property_documents')
+        .select(`
+          *,
+          properties!inner(user_id)
+        `)
+        .eq('properties.user_id', userId)
+        .order('uploaded_at', { ascending: false })
+
+      if (error) {
+        logger.error('Error fetching all user documents', { userId, error })
+        throw error
+      }
+
+      return (data || []).map(doc => ({
+        id: doc.id,
+        propertyId: doc.property_id,
+        name: doc.name,
+        type: doc.type,
+        url: doc.url,
+        status: doc.status,
+        uploadedAt: doc.uploaded_at,
+      }))
+    } catch (error) {
+      logger.error('Error in getAllUserDocuments', { userId, error })
+      return []
+    }
+  }
+
+  static async deleteDocument(documentId: string): Promise<boolean> {
+    try {
+      const { error } = await supabaseAdmin
+        .from('property_documents')
+        .delete()
+        .eq('id', documentId)
+
+      if (error) {
+        logger.error('Error deleting document', { documentId, error })
+        throw error
+      }
+
+      logger.info('Document deleted successfully', { documentId })
+      return true
+    } catch (error) {
+      logger.error('Error in deleteDocument', { documentId, error })
+      return false
+    }
+  }
+
+  // Helper method to map database properties to domain model
+  private static mapPropertyToDomain(dbProperty: any, documents: any[]): Property {
     return {
-      totalProperties: userProperties.length,
-      verifiedProperties,
-      pendingProperties,
-      pendingDocuments,
-      totalValue,
-      currency: 'KES'
+      id: dbProperty.id,
+      userId: dbProperty.user_id,
+      title: dbProperty.title,
+      type: dbProperty.type,
+      location: dbProperty.location,
+      size: dbProperty.size,
+      status: dbProperty.status,
+      value: dbProperty.value,
+      currency: dbProperty.currency,
+      documents: documents.map(doc => ({
+        id: doc.id,
+        propertyId: doc.property_id,
+        name: doc.name,
+        type: doc.type,
+        url: doc.url,
+        status: doc.status,
+        uploadedAt: doc.uploaded_at,
+      })),
+      coordinates: dbProperty.coordinates_lat && dbProperty.coordinates_lng ? {
+        lat: dbProperty.coordinates_lat,
+        lng: dbProperty.coordinates_lng,
+      } : undefined,
+      createdAt: dbProperty.created_at,
+      updatedAt: dbProperty.updated_at,
     }
   }
 
-  static addProperty(userId: string, propertyData: Omit<Property, 'id' | 'userId' | 'createdAt' | 'updatedAt'>): Property {
-    const newProperty: Property = {
-      ...propertyData,
-      id: `prop_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
-      userId,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
-    }
-    
-    properties.push(newProperty)
-    return newProperty
-  }
-
-  static updateProperty(propertyId: string, updates: Partial<Property>): Property | null {
-    const propertyIndex = properties.findIndex(prop => prop.id === propertyId)
-    if (propertyIndex === -1) return null
-
-    properties[propertyIndex] = {
-      ...properties[propertyIndex],
-      ...updates,
-      updatedAt: new Date().toISOString()
-    }
-    
-    return properties[propertyIndex]
-  }
-
-  static deleteProperty(propertyId: string): boolean {
-    const propertyIndex = properties.findIndex(prop => prop.id === propertyId)
-    if (propertyIndex === -1) return false
-
-    properties.splice(propertyIndex, 1)
-    
-    // Also remove associated documents
-    documents = documents.filter(doc => doc.propertyId !== propertyId)
-    
-    return true
-  }
-
-  static addDocument(document: Omit<PropertyDocument, 'id' | 'uploadedAt'>): PropertyDocument {
-    const newDocument: PropertyDocument = {
-      ...document,
-      id: `doc_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
-      uploadedAt: new Date().toISOString()
-    }
-    
-    documents.push(newDocument)
-    return newDocument
-  }
-
-  static getPropertyDocuments(propertyId: string): PropertyDocument[] {
-    return documents.filter(doc => doc.propertyId === propertyId)
-  }
-
-  static getAllUserDocuments(userId: string): PropertyDocument[] {
-    const userProperties = this.getUserProperties(userId)
-    const propertyIds = userProperties.map(prop => prop.id)
-    return documents.filter(doc => propertyIds.includes(doc.propertyId))
-  }
-
-  static deleteDocument(documentId: string): boolean {
-    const documentIndex = documents.findIndex(doc => doc.id === documentId)
-    if (documentIndex === -1) return false
-
-    documents.splice(documentIndex, 1)
-    return true
+  private static mapPropertiesToDomain(dbProperties: any[]): Property[] {
+    return dbProperties.map(prop => 
+      this.mapPropertyToDomain(prop, prop.property_documents || [])
+    )
   }
 }
