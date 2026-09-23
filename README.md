@@ -8,12 +8,13 @@
 - Wallet connect, register, transfer on-chain
 - Responsive, error-free, consistent UI
 
-## Blockchain Integration
+## On-chain anchoring (future)
 
-- Smart contract: `blockchain/contracts/ArdhiXRegistry.sol`
-- ethers.js integration: `lib/blockchain.ts`
-- UI hooks and components for wallet connect, register, transfer
-- All property registration and transfer can be optionally recorded on-chain
+ArdhiX runs DB-first today: Supabase + RLS + auth is the working registry core
+(see `supabase-setup.sql`). The Solidity registry scaffold
+(`blockchain/contracts/ArdhiXRegistry.sol`) is kept as the anchor for a future
+on-chain Labs track — it is NOT wired into the app (no deploy tooling, no ABI,
+no contract address configured).
 
 ## Setup
 1. Deploy Solidity contract (`ArdhiXRegistry.sol`) to Ethereum-compatible testnet, copy address to `.env.local` as `NEXT_PUBLIC_ARDHIX_CONTRACT_ADDRESS`
