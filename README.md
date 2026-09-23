@@ -1,28 +1,28 @@
-# ArdhiX: Blockchain-powered Land Registry
+# ArdhiX: Supabase-backed Land Registry
 
 ## Features
 - Secure Auth (Supabase)
 - Property registration, transfer, verification
 - Document and map integration
-- Blockchain-backed on-chain property proof (Ethereum compatible)
-- Wallet connect, register, transfer on-chain
-- Responsive, error-free, consistent UI
+- Responsive, consistent UI
 
-## Blockchain Integration
+## On-chain anchoring (future)
 
-- Smart contract: `blockchain/contracts/ArdhiXRegistry.sol`
-- ethers.js integration: `lib/blockchain.ts`
-- UI hooks and components for wallet connect, register, transfer
-- All property registration and transfer can be optionally recorded on-chain
+ArdhiX runs DB-first today: Supabase + RLS + auth is the working registry core
+(see `supabase-setup.sql`). The Solidity registry scaffold
+(`blockchain/contracts/ArdhiXRegistry.sol`) is kept as the anchor for a future
+on-chain Labs track — it is NOT wired into the app (no deploy tooling, no ABI,
+no contract address configured).
 
 ## Setup
-1. Deploy Solidity contract (`ArdhiXRegistry.sol`) to Ethereum-compatible testnet, copy address to `.env.local` as `NEXT_PUBLIC_ARDHIX_CONTRACT_ADDRESS`
-2. Run `pnpm install`
-3. Set up Supabase and update env vars
-4. Run `pnpm dev` and access at `localhost:3000`
+1. Run `pnpm install`
+2. Set up Supabase and update env vars (copy `.env.example` to `.env.local`; schema in `supabase-setup.sql`)
+3. Run `pnpm dev` and access at `localhost:3000`
 
 ## Tech
 - Next.js, Tailwind, Shadcn/ui
 - Supabase (Auth, DB, Storage)
-- ethers.js (Web3)
-- Solidity (Smart Contract)
+- Solidity registry scaffold (future on-chain track — not wired in)
+
+## Package manager
+pnpm is canonical for this repo (`pnpm-lock.yaml` is the only lockfile).

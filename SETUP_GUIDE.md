@@ -27,13 +27,15 @@ pnpm install
    - Places API
    - Geocoding API
 4. Create an API key with the above APIs enabled
-5. Copy `.env.local.example` to `.env.local`
+5. Copy `.env.example` to `.env.local`
 6. Add your API key to `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY`
 
 ### 3. Database Setup
-The system includes schema for both SQLite (development) and PostgreSQL (production):
-- SQLite: Automatically created at `./dev.db`
-- PostgreSQL: Use the schema in `lib/database-config.ts`
+The app is DB-first on Supabase (PostgreSQL). Run the schema in
+`supabase-setup.sql` in your Supabase project's SQL editor; the client
+lives in `lib/supabase.ts`. Copy `.env.example` to `.env.local` and fill
+in `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, and
+`SUPABASE_SERVICE_ROLE_KEY` from the Supabase dashboard.
 
 ### 4. Run the Application
 ```bash
@@ -111,7 +113,8 @@ pnpm dev
 
 ### Data and Configuration
 - `lib/kenya-locations.ts` - Complete Kenya counties and wards data
-- `lib/database-config.ts` - Database schema and configuration
+- `lib/supabase.ts` - Supabase client (auth, DB, storage)
+- `supabase-setup.sql` - Database schema (run in the Supabase SQL editor)
 - `lib/google-maps-config.ts` - Google Maps API configuration
 - `.env.local.example` - Environment variables template
 
@@ -141,9 +144,10 @@ pnpm dev
 ## Production Deployment
 
 ### Database
-- Switch from SQLite to PostgreSQL
-- Run the schema from `lib/database-config.ts`
-- Update `DATABASE_URL` in environment variables
+- Supabase is the database — there is no SQLite/PostgreSQL switch
+- Run `supabase-setup.sql` in the Supabase SQL editor
+- Set `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, and
+  `SUPABASE_SERVICE_ROLE_KEY` in environment variables
 
 ### Environment Variables
 - Set `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY`

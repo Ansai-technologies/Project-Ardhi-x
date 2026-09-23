@@ -1,61 +1,39 @@
 # Database Setup for ArdhiX Land Registry System
 
-## Recommended Database: PostgreSQL with Prisma ORM
+## Database: Supabase (PostgreSQL)
 
-### Why PostgreSQL?
-- **Excellent for land registry systems**: Strong ACID compliance, spatial data support
-- **Scalable**: Handles large datasets efficiently
-- **Geographic capabilities**: PostGIS extension for location-based queries
-- **Production-ready**: Used by major applications worldwide
-- **Free and open-source**: No licensing costs
+ArdhiX is DB-first on Supabase — this is the live database, not one option
+among many. Schema and RLS live in `supabase-setup.sql`; the client lives in
+`lib/supabase.ts`.
 
-### Alternative Options:
-1. **Supabase** (Recommended for rapid development)
-   - PostgreSQL with built-in auth, real-time, and APIs
-   - Free tier: 500MB database, 2GB bandwidth
-   - Easy deployment and scaling
-
-2. **Neon** (Serverless PostgreSQL)
-   - Modern serverless PostgreSQL
-   - Automatic scaling and branching
-
-3. **MongoDB** (If you prefer NoSQL)
-   - Good for flexible document structures
-   - Easy to scale horizontally
+### Why Supabase?
+- **PostgreSQL with strong ACID compliance**, spatial data support via PostGIS
+- **Built-in auth, real-time, and storage APIs**
+- **Free tier**: 500MB database, 2GB bandwidth
+- **Easy deployment and scaling**
 
 ## Setup Instructions
 
-### Option 1: Supabase (Recommended)
-
 1. **Install dependencies:**
 ```bash
-npm install @supabase/supabase-js
-npm install prisma @prisma/client
-npm install prisma-supabase
+pnpm install @supabase/supabase-js
 ```
 
 2. **Sign up at supabase.com and create a project**
 
-3. **Get your database URL from Supabase dashboard**
+3. **Run `supabase-setup.sql`** in the Supabase SQL editor (tables + RLS policies)
 
-### Option 2: Local PostgreSQL
-
-1. **Install PostgreSQL locally**
-2. **Install dependencies:**
-```bash
-npm install prisma @prisma/client
-npm install pg @types/pg
+4. **Copy `.env.example` to `.env.local`** and fill in from Project Settings → API:
+```env
+NEXT_PUBLIC_SUPABASE_URL="https://..."
+NEXT_PUBLIC_SUPABASE_ANON_KEY="..."
+SUPABASE_SERVICE_ROLE_KEY="..."
+SUPABASE_JWT_SECRET=<redacted>
 ```
-
-### Option 3: Railway/Vercel Postgres
-
-1. **Create account on Railway or Vercel**
-2. **Create PostgreSQL database**
-3. **Get connection string**
 
 ## Database Schema
 
-The schema will include:
+The schema includes:
 - Users table (authentication)
 - Properties table (land properties)
 - Documents table (property documents)
@@ -63,22 +41,10 @@ The schema will include:
 - Transactions table (property transfers)
 - Audit logs (all changes)
 
-## Environment Variables Needed
+## Notes
 
-```env
-DATABASE_URL="postgresql://..."
-SUPABASE_URL="https://..."
-SUPABASE_ANON_KEY="..."
-NEXTAUTH_SECRET="..."
-GOOGLE_MAPS_API_KEY="..."
-```
-
-## Next Steps
-
-1. Choose your database provider
-2. Run `npx prisma init`
-3. Define schema in `prisma/schema.prisma`
-4. Run migrations
-5. Generate Prisma client
-
-Would you like me to set up the complete Prisma schema and database integration?
+- There is no Prisma in this repo (removed in the hygiene pass). Do not run
+  `npx prisma init` or install `@prisma/client` — the Supabase client is the
+  data layer.
+- The Solidity registry scaffold (`blockchain/contracts/ArdhiXRegistry.sol`)
+  is a future on-chain Labs track, not the database.
